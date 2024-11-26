@@ -281,6 +281,8 @@ def attach_subtitles(input_path: str, subtitles_path: str, output_path: str):
             command = [
                 "ffmpeg", "-y", "-i", input_path,
                 "-vf", f"subtitles={subtitles_path}:fontsdir={os.path.dirname(font_path)}",
+                "-c:v", "libx264",
+                "-crf", "18",
                 output_path
             ]
 
