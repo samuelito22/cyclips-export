@@ -28,7 +28,7 @@ class Exporter:
         end = Decimal(str(end))
         duration = end - start
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory(delete=False) as temp_dir:
             metadata = fetch_video_metadata(video_path)
             video_width = int(metadata["streams"][0]["width"])
             video_height = int(metadata["streams"][0]["height"])
@@ -119,7 +119,7 @@ class Exporter:
         scene_start = scene["start_time"]
         scene_end = scene["end_time"]
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory(delete=False) as temp_dir:
             segment_path = f"{temp_dir}/segment.mp4"
             trim_video(
                 video_path=video_path, 
