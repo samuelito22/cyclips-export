@@ -27,50 +27,49 @@ class Exporter:
         start = Decimal(str(start))
         end = Decimal(str(end))
         duration = end - start
-        
-        temp_dir = tempfile.mkdtemp()
-    
-        metadata = fetch_video_metadata(video_path)
-        video_width = int(metadata["streams"][0]["width"])
-        video_height = int(metadata["streams"][0]["height"])
-        video_fps = Decimal(eval(metadata["streams"][0]["avg_frame_rate"]))
-        min_frame_duration = Decimal(1) / video_fps
-        
-        trimmed_clip_path = f"{temp_dir}/trimmed_clip.mp4"
-        intermediate_clip_path = f"{temp_dir}/intermediate_clip.mp4"
-        final_trimmed_path = f"{temp_dir}/final_trimmed_clip.mp4"
-        
-        # Trim the video
-        self._update_progress(10, "Trimming the video...")
-        trim_video(
-            video_path=video_path, 
-            output_path=trimmed_clip_path, 
-            start=start, 
-            end=end, 
-            fps=video_fps
-        )
 
-        # Extract audio if needed
-        audio_path = f"{temp_dir}/audio.aac" if duration > min_frame_duration else None
-        if audio_path:
-            self._update_progress(20, "Extracting audio...")
-            extract_audio(trimmed_clip_path, audio_path)
-                        
-        # Process scenes
-        self._update_progress(30, "Processing scenes...")
-        scenes = self._get_scenes(start, end, scenes_path, reset=False)
-        scene_paths = [f"{temp_dir}/scene_{i}.mp4" for i, _ in enumerate(scenes)]
-        with ThreadPoolExecutor() as executor:
-            executor.map(
-                self._create_scene,
-                scenes,
-                [video_path] * len(scenes), 
-                [video_width] * len(scenes), 
-                [video_height] * len(scenes), 
-                [video_fps] * len(scenes), 
-                [aspect_ratio] * len(scenes), 
-                scene_paths 
+        with tempfile.TemporaryDirectory() as temp_dir:
+            metadata = fetch_video_metadata(video_path)
+            video_width = int(metadata["streams"][0]["width"])
+            video_height = int(metadata["streams"][0]["height"])
+            video_fps = Decimal(eval(metadata["streams"][0]["avg_frame_rate"]))
+            min_frame_duration = Decimal(1) / video_fps
+            
+            trimmed_clip_path = f"{temp_dir}/trimmed_clip.mp4"
+            intermediate_clip_path = f"{temp_dir}/intermediate_clip.mp4"
+            final_trimmed_path = f"{temp_dir}/final_trimmed_clip.mp4"
+            
+            # Trim the video
+            self._update_progress(10, "Trimming the video...")
+            trim_video(
+                video_path=video_path, 
+                output_path=trimmed_clip_path, 
+                start=start, 
+                end=end, 
+                fps=video_fps
             )
+
+            # Extract audio if needed
+            audio_path = f"{temp_dir}/audio.aac" if duration > min_frame_duration else None
+            if audio_path:
+                self._update_progress(20, "Extracting audio...")
+                extract_audio(trimmed_clip_path, audio_path)
+                            
+            # Process scenes
+            self._update_progress(30, "Processing scenes...")
+            scenes = self._get_scenes(start, end, scenes_path, reset=False)
+            scene_paths = [f"{temp_dir}/scene_{i}.mp4" for i, _ in enumerate(scenes)]
+            with ThreadPoolExecutor() as executor:
+                executor.map(
+                    self._create_scene,
+                    scenes,
+                    [video_path] * len(scenes), 
+                    [video_width] * len(scenes), 
+                    [video_height] * len(scenes), 
+                    [video_fps] * len(scenes), 
+                    [aspect_ratio] * len(scenes), 
+                    scene_paths 
+                )
 
             # Concatenate scenes
             self._update_progress(50, "Concatenating scenes...")
@@ -120,37 +119,36 @@ class Exporter:
         scene_start = scene["start_time"]
         scene_end = scene["end_time"]
 
-        temp_dir = tempfile.mkdtemp()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            segment_path = f"{temp_dir}/segment.mp4"
+            trim_video(
+                video_path=video_path, 
+                output_path=segment_path, 
+                start=scene_start, 
+                end=scene_end, 
+                fps=video_fps,
+                no_audio=True
+            )
 
-        segment_path = f"{temp_dir}/segment.mp4"
-        trim_video(
-            video_path=video_path, 
-            output_path=segment_path, 
-            start=scene_start, 
-            end=scene_end, 
-            fps=video_fps,
-            no_audio=True
-        )
-
-        if scene["type"] == "fill":
-            apply_fill(
-                scene=scene, 
-                input_path=segment_path, 
-                output_path=output_path,
-                video_height=video_height,
-                video_width=video_width,
-                )
-        elif scene["type"] == "fit":
-            
-            apply_fit(
-                input_path=segment_path, 
-                output_path=output_path,
-                video_height=video_height,
-                video_width=video_width,
-                aspect_ratio=aspect_ratio
-                )
-        else:
-            raise ValueError(f"Unknown scene type: {scene['type']}")
+            if scene["type"] == "fill":
+                apply_fill(
+                    scene=scene, 
+                    input_path=segment_path, 
+                    output_path=output_path,
+                    video_height=video_height,
+                    video_width=video_width,
+                    )
+            elif scene["type"] == "fit":
+                
+                apply_fit(
+                    input_path=segment_path, 
+                    output_path=output_path,
+                    video_height=video_height,
+                    video_width=video_width,
+                    aspect_ratio=aspect_ratio
+                    )
+            else:
+                raise ValueError(f"Unknown scene type: {scene['type']}")
 
     def _concatenate_videos(self, output_path:str, concat_file_path:str, audio_path: str = None):
         command = [

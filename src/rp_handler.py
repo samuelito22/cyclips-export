@@ -68,7 +68,7 @@ def process_export(job: dict, video_url: str, start: float, end: float, scenes_u
 
     # Export video
     with rp_debugger.LineTimer('export_step'):
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(suffix=".mp4") as temp_file:
             Exporter(progress_callback).export(
                 video_path=video_url,
                 start=start,
