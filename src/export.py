@@ -7,6 +7,13 @@ from typing import Tuple
 import shutil
 
 class Exporter:
+    def __init__(self, progress_callback=None):
+        self.progress_callback = progress_callback
+    
+    def _update_progress(self, progress, message):
+        if self.progress_callback:
+            self.progress_callback(progress, message)
+            
     def export(
         self, 
         video_path: str,
@@ -33,6 +40,7 @@ class Exporter:
             final_trimmed_path = f"{temp_dir}/final_trimmed_clip.mp4"
             
             # Trim the video
+            self._update_progress(10, "Trimming the video...")
             trim_video(
                 video_path=video_path, 
                 output_path=trimmed_clip_path, 
@@ -44,9 +52,11 @@ class Exporter:
             # Extract audio if needed
             audio_path = f"{temp_dir}/audio.aac" if duration > min_frame_duration else None
             if audio_path:
+                self._update_progress(20, "Extracting audio...")
                 extract_audio(trimmed_clip_path, audio_path)
                             
             # Process scenes
+            self._update_progress(30, "Processing scenes...")
             scenes = self._get_scenes(start, end, scenes_path, reset=False)
             scene_paths = [f"{temp_dir}/scene_{i}.mp4" for i, _ in enumerate(scenes)]
             with ThreadPoolExecutor() as executor:
@@ -62,6 +72,7 @@ class Exporter:
                 )
 
             # Concatenate scenes
+            self._update_progress(50, "Concatenating scenes...")
             concat_file_path = f"{temp_dir}/concat_list.txt"
             with open(concat_file_path, 'w') as concat_file:
                 for scene_path in scene_paths:
@@ -71,6 +82,7 @@ class Exporter:
             self._concatenate_videos(concatenated_clip_path, concat_file_path, audio_path=None)
 
             # Final trim after concatenation
+            self._update_progress(70, "Final trimming and attaching audio...")
             trim_video(
                 video_path=concatenated_clip_path, 
                 output_path=intermediate_clip_path, 
@@ -87,9 +99,12 @@ class Exporter:
             )
             
             if subtitles_path: 
+                self._update_progress(90, "Attaching subtitles...")
                 attach_subtitles(final_trimmed_path, subtitles_path, output_path)
             else:
                 shutil.copy(final_trimmed_path, output_path)
+                
+        self._update_progress(100, "Export completed successfully!")
 
     def _create_scene(
         self,
