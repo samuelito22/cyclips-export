@@ -8,7 +8,7 @@ apt-get update && apt-get upgrade -y # Update System
 
 # Install System Dependencies
 # - openssh-server: for ssh access and web terminal
-apt-get install -y --no-install-recommends software-properties-common curl git openssh-server
+apt-get install -y --no-install-recommends software-properties-common curl git openssh-server ffmpeg
 
 # Install Python 3.10
 add-apt-repository ppa:deadsnakes/ppa -y

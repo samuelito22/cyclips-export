@@ -26,4 +26,4 @@ RUN python3.11 -m pip install --upgrade pip && \
 # Add src files (Worker Template)
 ADD src .
 
-CMD python3.11 -u /handler.py
+CMD python3.11 -u /rp_handler.py
