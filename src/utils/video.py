@@ -272,7 +272,7 @@ def attach_subtitles(input_path: str, subtitles_path: str, output_path: str):
         
         base64_font_data = font_match.group(1)
         
-        with tempfile.NamedTemporaryFile(suffix=".ttf", delete=False, dir="job_files") as temp_font_file:
+        with tempfile.NamedTemporaryFile(suffix=".ttf", delete=False, dir="jobs") as temp_font_file:
             temp_font_file.write(base64.b64decode(base64_font_data))
             temp_font_file.flush()  
             

@@ -48,7 +48,7 @@ def base64_to_tempfile(base64_file: str) -> str:
     Returns:
         str: Path to the created temporary file.
     """
-    with tempfile.NamedTemporaryFile(suffix=".ass", delete=False, dir="job_files") as temp_file:
+    with tempfile.NamedTemporaryFile(suffix=".ass", delete=False, dir="jobs") as temp_file:
         temp_file.write(base64.b64decode(base64_file))
     return temp_file.name
     
@@ -59,7 +59,7 @@ def process_export(job: dict, video_url: str, start: float, end: float, scenes_u
             "progress": progress,
             "message": message,
         }
-        runpod.serverless.progress_update(job, status_data)
+        #runpod.serverless.progress_update(job, status_data)
         
     subtitles_path = base64_to_tempfile(subtitles) if subtitles else None
 
@@ -69,7 +69,7 @@ def process_export(job: dict, video_url: str, start: float, end: float, scenes_u
 
     # Export video
     with rp_debugger.LineTimer('export_step'):
-        with tempfile.NamedTemporaryFile(suffix=".mp4", dir="job_files") as temp_file:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", dir="jobs") as temp_file:
             Exporter(progress_callback).export(
                 video_path=video_url,
                 start=start,
@@ -86,8 +86,8 @@ def process_export(job: dict, video_url: str, start: float, end: float, scenes_u
 def handler(job: dict):
     rp_debugger.clear_debugger_output()
     
-    if not os.path.exists("job_files"):
-        os.makedirs("job_files", exist_ok=True)
+    if not os.path.exists("jobs"):
+        os.makedirs("jobs", exist_ok=True)
         
     # Validate input and reconstruct the job
     with rp_debugger.LineTimer('validation_step'):
@@ -140,7 +140,7 @@ def process_single_export(job: dict):
     )
     
     with rp_debugger.LineTimer('cleanup_step'):
-        rp_cleanup.clean(['job_files'])
+        rp_cleanup.clean(['jobs'])
         
     return {"status": "completed"}
 
