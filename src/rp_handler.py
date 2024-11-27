@@ -84,6 +84,7 @@ def process_export(job: dict, video_url: str, start: float, end: float, scenes_u
 
 @rp_debugger.FunctionTimer
 def handler(job: dict):
+    rp_debugger.clear_debugger_output()
     
     if not os.path.exists("job_files"):
         os.makedirs("job_files", exist_ok=True)
@@ -176,10 +177,10 @@ def process_batch_export(job: dict):
             executor.submit(
                 process_export,
                 job=job,
-                video_url=entry["video_url"],
+                video_url=job_input["video_url"],
                 start=entry["start"],
                 end=entry["end"],
-                scenes_url=entry["scenes_url"],
+                scenes_url=job_input["scenes_url"],
                 subtitles=entry.get("subtitles"),
                 destination_url=entry["destination_url"]
             )
