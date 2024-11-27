@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from runpod.serverless.utils import download_files_from_urls, rp_debugger, rp_cleanup
 from runpod.serverless.utils.rp_validator import validate
 import runpod
+import os
 
 from rp_schema import INPUT_VALIDATIONS
 from export import Exporter
@@ -83,6 +84,10 @@ def process_export(job: dict, video_url: str, start: float, end: float, scenes_u
 
 @rp_debugger.FunctionTimer
 def handler(job: dict):
+    
+    if not os.path.exists("job_files"):
+        os.makedirs("job_files", exist_ok=True)
+        
     # Validate input and reconstruct the job
     with rp_debugger.LineTimer('validation_step'):
         input_validation = validate(job.get('input', {}), INPUT_VALIDATIONS)
