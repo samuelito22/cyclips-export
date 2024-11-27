@@ -47,7 +47,7 @@ def base64_to_tempfile(base64_file: str) -> str:
     Returns:
         str: Path to the created temporary file.
     """
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+    with tempfile.NamedTemporaryFile(suffix=".ass", delete=False, dir="job_files") as temp_file:
         temp_file.write(base64.b64decode(base64_file))
     return temp_file.name
     
@@ -68,7 +68,7 @@ def process_export(job: dict, video_url: str, start: float, end: float, scenes_u
 
     # Export video
     with rp_debugger.LineTimer('export_step'):
-        with tempfile.NamedTemporaryFile(suffix=".mp4") as temp_file:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", dir="job_files") as temp_file:
             Exporter(progress_callback).export(
                 video_path=video_url,
                 start=start,
@@ -134,7 +134,7 @@ def process_single_export(job: dict):
     )
     
     with rp_debugger.LineTimer('cleanup_step'):
-        rp_cleanup.clean(['input_objects'])
+        rp_cleanup.clean(['job_files'])
         
     return {"status": "completed"}
 
