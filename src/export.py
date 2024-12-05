@@ -9,6 +9,7 @@ import shutil
 class Exporter:
     def __init__(self, progress_callback=None):
         self.progress_callback = progress_callback
+        self.cookies_path: str = os.path.join(os.path.abspath(os.path.dirname(__file__)), "cookies.txt")
     
     def _update_progress(self, progress, message):
         if self.progress_callback:
@@ -16,7 +17,7 @@ class Exporter:
             
     def export(
         self, 
-        video_path: str,
+        video_url: str,
         start: float,
         end: float,
         scenes_path: str,
@@ -28,42 +29,32 @@ class Exporter:
         end = Decimal(str(end))
         duration = end - start
 
-        with tempfile.TemporaryDirectory(dir="jobs") as temp_dir:
-            metadata = fetch_video_metadata(video_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._update_progress(10, "Trimming the video...")
+            trimmed_clip_path = f"{temp_dir}/trimmed_clip.mp4"
+            
+            trim_video(video_path=video_url, output_path=trimmed_clip_path, start=start, end=end)
+
+            metadata = fetch_video_metadata(trimmed_clip_path)
             video_width = int(metadata["streams"][0]["width"])
             video_height = int(metadata["streams"][0]["height"])
             video_fps = Decimal(eval(metadata["streams"][0]["avg_frame_rate"]))
-            min_frame_duration = Decimal(1) / video_fps
+            min_frame_duration = Decimal(1) / video_fps 
             
-            trimmed_clip_path = f"{temp_dir}/trimmed_clip.mp4"
-            intermediate_clip_path = f"{temp_dir}/intermediate_clip.mp4"
-            final_trimmed_path = f"{temp_dir}/final_trimmed_clip.mp4"
-            
-            # Trim the video
-            self._update_progress(10, "Trimming the video...")
-            trim_video(
-                video_path=video_path, 
-                output_path=trimmed_clip_path, 
-                start=start, 
-                end=end, 
-                fps=video_fps
-            )
-
-            # Extract audio if needed
             audio_path = f"{temp_dir}/audio.aac" if duration > min_frame_duration else None
             if audio_path:
                 self._update_progress(20, "Extracting audio...")
                 extract_audio(trimmed_clip_path, audio_path)
-                            
+                                            
             # Process scenes
             self._update_progress(30, "Processing scenes...")
-            scenes = self._get_scenes(start, end, scenes_path, reset=False)
+            scenes = self._get_scenes(start, end, scenes_path, reset=True)
             scene_paths = [f"{temp_dir}/scene_{i}.mp4" for i, _ in enumerate(scenes)]
             with ThreadPoolExecutor() as executor:
                 executor.map(
                     self._create_scene,
                     scenes,
-                    [video_path] * len(scenes), 
+                    [trimmed_clip_path] * len(scenes), 
                     [video_width] * len(scenes), 
                     [video_height] * len(scenes), 
                     [video_fps] * len(scenes), 
@@ -79,30 +70,13 @@ class Exporter:
                     concat_file.write(f"file '{scene_path}'\n")
 
             concatenated_clip_path = f"{temp_dir}/concatenated_clip.mp4"
-            self._concatenate_videos(concatenated_clip_path, concat_file_path, audio_path=None)
+            self._concatenate_videos(concatenated_clip_path, concat_file_path, audio_path=audio_path)
 
-            # Final trim after concatenation
-            self._update_progress(70, "Final trimming and attaching audio...")
-            trim_video(
-                video_path=concatenated_clip_path, 
-                output_path=intermediate_clip_path, 
-                start=max(start - scenes[0]["start_time"], 0), 
-                end=end, 
-                fps=video_fps
-            )
-
-            # Attach audio
-            attach_audio(
-                video_path=intermediate_clip_path,
-                audio_path=audio_path,
-                output_path=final_trimmed_path
-            )
-            
             if subtitles_path: 
                 self._update_progress(90, "Attaching subtitles...")
-                attach_subtitles(final_trimmed_path, subtitles_path, output_path)
+                attach_subtitles(concatenated_clip_path, subtitles_path, output_path)
             else:
-                shutil.copy(final_trimmed_path, output_path)
+                shutil.copy(concatenated_clip_path, output_path)
                 
         self._update_progress(100, "Export completed successfully!")
 
@@ -119,7 +93,7 @@ class Exporter:
         scene_start = scene["start_time"]
         scene_end = scene["end_time"]
 
-        with tempfile.TemporaryDirectory(dir="jobs") as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             segment_path = f"{temp_dir}/segment.mp4"
             trim_video(
                 video_path=video_path, 
@@ -169,21 +143,15 @@ class Exporter:
             output_path,
         ])
         
-        try:
-            result = subprocess.run(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True,  
-                text=True  
-            )
-            if result.returncode == 0:
-                print(f"Successfully concatenated segments")
-            else:
-                print(f"Error concatenating segments: {result.stderr}")
-        except subprocess.CalledProcessError as e:
-            print(f"Error concatenating segments: {e.stderr}")
-            
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,  
+            text=True  
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Error concatenating segments: {result.stderr}")
 
     def _get_scenes(self, start: Decimal, end: Decimal, scenes_path: str, reset: bool = True):
         with open(scenes_path, "r") as file:

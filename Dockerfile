@@ -1,25 +1,31 @@
-# Base image -> https://github.com/runpod/containers/blob/main/official-templates/base/Dockerfile
-# DockerHub -> https://hub.docker.com/r/runpod/base/tags
-FROM runpod/base:0.6.2-cpu
+# Use the official Python slim image as the base
+FROM python:3.11-slim-bookworm
 
-# The base image comes with many system dependencies pre-installed to help you get started quickly.
-# Please refer to the base image's Dockerfile for more information before adding additional dependencies.
+# Set environment variables to avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# --- Optional: System dependencies ---
-COPY builder/setup.sh /setup.sh
-RUN /bin/bash /setup.sh && \
-    rm /setup.sh
+# Install system dependencies, including FFmpeg
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    gcc \
+    libpq-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Python dependencies
+# Optional: Set the working directory (adjust to your project structure)
+WORKDIR /app
+
+# Install Python dependencies
 COPY builder/requirements.txt /requirements.txt
-RUN python3.11 -m pip install --upgrade pip && \
-    python3.11 -m pip install --upgrade -r /requirements.txt --no-cache-dir && \
+RUN python -m pip install --upgrade pip && \
+    python -m pip install --no-cache-dir -r /requirements.txt && \
     rm /requirements.txt
 
-# NOTE: The base image comes with multiple Python versions pre-installed.
-#       It is recommended to specify the version of Python when running your code.
+# Copy source code into the container
+ADD src /app
 
-# Add src files (Worker Template)
-ADD src .
+EXPOSE 8000
 
-CMD python3.11 -u /rp_handler.py
+# Define the command to run your application
+CMD ["python", "-u", "/app/rp_handler.py"]

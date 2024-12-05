@@ -7,3 +7,4 @@
 
 runpod~=1.7.5
 azure-storage-blob==12.24.0
+yt-dlp==2024.11.18

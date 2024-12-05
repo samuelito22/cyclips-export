@@ -8,20 +8,18 @@ rp_debugger:
 
 import base64
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+import os
 from typing import Optional
 
 from dotenv import load_dotenv
 from runpod.serverless.utils import download_files_from_urls, rp_debugger, rp_cleanup
 from runpod.serverless.utils.rp_validator import validate
 import runpod
-import os
 
 from rp_schema import INPUT_VALIDATIONS
 from export import Exporter
 from utils.azure import upload_file
 
-# Load environment variables
 load_dotenv()
 
 
@@ -48,151 +46,60 @@ def base64_to_tempfile(base64_file: str) -> str:
     Returns:
         str: Path to the created temporary file.
     """
-    with tempfile.NamedTemporaryFile(suffix=".ass", delete=False, dir="jobs") as temp_file:
+    with tempfile.NamedTemporaryFile(suffix=".ass", delete=False) as temp_file:
         temp_file.write(base64.b64decode(base64_file))
     return temp_file.name
-    
-def process_export(job: dict, video_url: str, start: float, end: float, scenes_url: str, subtitles: Optional[str], destination_url: str):
-
-    def progress_callback(progress, message):
-        status_data = {
-            "progress": progress,
-            "message": message,
-        }
-        #runpod.serverless.progress_update(job, status_data)
-        
-    subtitles_path = base64_to_tempfile(subtitles) if subtitles else None
-
-    # Download scenes file
-    with rp_debugger.LineTimer('download_step'):
-        scenes_path = download_files_from_urls(job["id"], [scenes_url])[0]
-
-    # Export video
-    with rp_debugger.LineTimer('export_step'):
-        with tempfile.NamedTemporaryFile(suffix=".mp4", dir="jobs") as temp_file:
-            Exporter(progress_callback).export(
-                video_path=video_url,
-                start=start,
-                end=end,
-                scenes_path=scenes_path,
-                subtitles_path=subtitles_path,
-                output_path=temp_file.name
-            )
-            # Upload the exported video
-            upload_file(destination_url, temp_file.name)
-
 
 @rp_debugger.FunctionTimer
 def handler(job: dict):
-    rp_debugger.clear_debugger_output()
-    
-    if not os.path.exists("jobs"):
-        os.makedirs("jobs", exist_ok=True)
-        
-    # Validate input and reconstruct the job
-    with rp_debugger.LineTimer('validation_step'):
-        input_validation = validate(job.get('input', {}), INPUT_VALIDATIONS)
-        if 'errors' in input_validation:
-            return {"error": input_validation['errors']}
-        job['input'] = input_validation['validated_input']
+    try:
+        rp_debugger.clear_debugger_output()
 
-    task = job['input'].get('task')
-    if task == 'export':
-        return process_single_export(job)
-    elif task == 'batch-export':
-        return process_batch_export(job)
-    return {"error": f"Unsupported task type: {task}"}
+        with rp_debugger.LineTimer('validation_step'):
+            input_validation = validate(job.get('input', {}), INPUT_VALIDATIONS)
+            if 'errors' in input_validation:
+                return {"error": input_validation['errors']}
+            job['input'] = input_validation['validated_input']
 
+        task = job['input'].get('task')
+        if task == 'export-clips':
+            job_input = job['input']  
 
-def process_single_export(job: dict):
-    """
-    Process a single export job.
+            def progress_callback(progress, message):
+                status_data = {
+                    "progress": progress,
+                    "message": message,
+                }
+                runpod.serverless.progress_update(job, status_data)
 
-    Parameters:
-        job (dict): Job data.
+            subtitles_path = base64_to_tempfile(job_input["subtitles"]) if job_input["subtitles"] else None
 
-    Returns:
-        dict: Status of the export task.
-    """
-    job_input = job['input']  # Access the validated input directly
+            with rp_debugger.LineTimer(f"download_step"):
+                scenes_path = download_files_from_urls(job["id"], [job_input["scenes_url"]])[0]
 
-    # Validate required fields
-    required_fields = ['video_url', 'destination_url']
-    for field in required_fields:
-        if not job_input.get(field):
-            return {"error": f"Missing required field: {field}"}
+            with rp_debugger.LineTimer(f"export_step"):
+                with tempfile.NamedTemporaryFile(suffix=".mp4") as temp_file:
+                    Exporter(progress_callback=progress_callback).export(
+                        video_url=job_input["video_url"],
+                        start=job_input["start"],
+                        end=job_input["end"],
+                        scenes_path=scenes_path,
+                        subtitles_path=subtitles_path,
+                        output_path=temp_file.name
+                    )
 
-    if job_input.get('start', 0) >= job_input.get('end', 0):
-        return {"error": "Invalid time range."}
+                    upload_file(job_input["destination_url"], temp_file.name)
 
-    if job_input.get('subtitles') and not is_valid_base64(job_input['subtitles']):
-        return {"error": "Invalid base64 encoding for subtitles"}
+            return {"status": "completed"}
 
-    # Process export
-    process_export(
-        job=job,
-        video_url=job_input["video_url"],
-        start=job_input["start"],
-        end=job_input["end"],
-        scenes_url=job_input["scenes_url"],
-        subtitles=job_input.get("subtitles"),
-        destination_url=job_input["destination_url"]
-    )
-    
-    with rp_debugger.LineTimer('cleanup_step'):
-        rp_cleanup.clean(['jobs'])
-        
-    return {"status": "completed"}
+        return {"error": f"Unsupported task type: {task}"}
 
-
-
-def process_batch_export(job: dict):
-    """
-    Process a batch export job.
-
-    Parameters:
-        job (dict): Job data.
-
-    Returns:
-        dict: Status of the batch export task.
-    """
-    job_input = job['input']  # Access the validated input directly
-
-    # Validate batch field
-    if not job_input.get('batch'):
-        return {"error": "Missing required field: batch"}
-
-    # Validate each batch entry
-    for entry in job_input['batch']:
-        if not entry.get('destination_url'):
-            return {"error": f"Each batch entry must have a destination_url"}
-        if entry.get('start', 0) >= entry.get('end', 0):
-            return {"error": f"Invalid time range in batch entry: {entry}"}
-        if entry.get('subtitles') and not is_valid_base64(entry['subtitles']):
-            return {"error": f"Invalid base64 encoding for subtitles in batch entry: {entry}"}
-
-    # Process batch in parallel
-    with ThreadPoolExecutor() as executor:
-        futures = [
-            executor.submit(
-                process_export,
-                job=job,
-                video_url=job_input["video_url"],
-                start=entry["start"],
-                end=entry["end"],
-                scenes_url=job_input["scenes_url"],
-                subtitles=entry.get("subtitles"),
-                destination_url=entry["destination_url"]
-            )
-            for entry in job_input['batch']
-        ]
-        for future in futures:
-            future.result()
+    except Exception as e:
+        print(e)
             
-    with rp_debugger.LineTimer('cleanup_step'):
-        rp_cleanup.clean(['input_objects'])
-        
-    return {"status": "completed"}
+        return {"error": f"An error occurred: {str(e)}"}
+    finally:
+        with rp_debugger.LineTimer(f"cleanup_step"):
+            rp_cleanup.clean(["tmp"])
 
-# Start the serverless handler
 runpod.serverless.start({"handler": handler})
